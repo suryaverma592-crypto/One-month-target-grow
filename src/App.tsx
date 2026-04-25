@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Check, X, Copy, RotateCcw, TrendingUp } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Check, X, Copy, RotateCcw, TrendingUp, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface DayData {
@@ -10,15 +10,50 @@ interface DayData {
 }
 
 export default function App() {
-  const [initialAmount, setInitialAmount] = useState<number>(6);
-  const [profitPercent, setProfitPercent] = useState<number>(10);
-  const [planMonths, setPlanMonths] = useState<number>(1);
-  const [statuses, setStatuses] = useState<Record<number, 'success' | 'fail' | 'pending'>>({});
-  const [actuals, setActuals] = useState<Record<number, string>>({});
-  const [reasons, setReasons] = useState<Record<number, string>>({});
+  // Initialize state from localStorage or defaults
+  const [initialAmount, setInitialAmount] = useState<number>(() => {
+    const saved = localStorage.getItem('profit_planner_initialAmount');
+    return saved ? Number(saved) : 6;
+  });
+  const [profitPercent, setProfitPercent] = useState<number>(() => {
+    const saved = localStorage.getItem('profit_planner_profitPercent');
+    return saved ? Number(saved) : 10;
+  });
+  const [planMonths, setPlanMonths] = useState<number>(() => {
+    const saved = localStorage.getItem('profit_planner_planMonths');
+    return saved ? Number(saved) : 1;
+  });
+  const [statuses, setStatuses] = useState<Record<number, 'success' | 'fail' | 'pending'>>(() => {
+    const saved = localStorage.getItem('profit_planner_statuses');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [actuals, setActuals] = useState<Record<number, string>>(() => {
+    const saved = localStorage.getItem('profit_planner_actuals');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [reasons, setReasons] = useState<Record<number, string>>(() => {
+    const saved = localStorage.getItem('profit_planner_reasons');
+    return saved ? JSON.parse(saved) : {};
+  });
+
   const [copied, setCopied] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
 
   const totalDays = planMonths * 30;
+
+  // Auto-save whenever state changes
+  useEffect(() => {
+    localStorage.setItem('profit_planner_initialAmount', initialAmount.toString());
+    localStorage.setItem('profit_planner_profitPercent', profitPercent.toString());
+    localStorage.setItem('profit_planner_planMonths', planMonths.toString());
+    localStorage.setItem('profit_planner_statuses', JSON.stringify(statuses));
+    localStorage.setItem('profit_planner_actuals', JSON.stringify(actuals));
+    localStorage.setItem('profit_planner_reasons', JSON.stringify(reasons));
+    
+    setIsSaved(true);
+    const timer = setTimeout(() => setIsSaved(false), 2000);
+    return () => clearTimeout(timer);
+  }, [initialAmount, profitPercent, planMonths, statuses, actuals, reasons]);
 
   const tableData = useMemo(() => {
     const data: (DayData & { fixedGoal: number })[] = [];
@@ -67,7 +102,7 @@ export default function App() {
   };
 
   const copyToClipboard = () => {
-    let text = "30-Day 10% Daily Profit Plan (Start: $" + initialAmount + ")\n\n";
+    let text = "Compound Growth Plan (Start: $" + initialAmount + ")\n\n";
     text += "Day | Start Balance | Target Profit | Expected End | Actual End | Status | Reason\n";
     text += "---|---|---|---|---|---|---\n";
     tableData.forEach(row => {
@@ -83,10 +118,9 @@ export default function App() {
   };
 
   const resetProgress = () => {
-    if (confirm("Reset all progress?")) {
-        setStatuses({});
-        setActuals({});
-        setReasons({});
+    if (confirm("Reset all targets and delete saved data?")) {
+        localStorage.clear();
+        window.location.reload();
     }
   };
 
@@ -106,10 +140,24 @@ export default function App() {
             Daily Goal: {profitPercent}% Profit • Month 01
           </p>
         </div>
-        <div className="text-left md:text-right">
-          <div className="text-xs text-slate-400 uppercase font-bold tracking-tighter mb-1">Total Expected Gain</div>
-          <div className="text-3xl font-mono font-black text-blue-600">
-            ${tableData[totalDays - 1]?.endBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <div className="text-left md:text-right flex items-center gap-4">
+          <AnimatePresence>
+            {isSaved && (
+              <motion.div 
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0 }}
+                className="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-1 rounded border border-emerald-100"
+              >
+                ✓ SAVED
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <div>
+            <div className="text-xs text-slate-400 uppercase font-bold tracking-tighter mb-1">Total Expected Gain</div>
+            <div className="text-3xl font-mono font-black text-blue-600">
+              ${tableData[totalDays - 1]?.endBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
           </div>
         </div>
       </motion.header>
@@ -256,23 +304,21 @@ export default function App() {
                         className={`w-6 h-6 rounded flex items-center justify-center transition-all ${
                           statuses[row.day] === 'success' 
                           ? 'bg-emerald-500 text-white' 
-                          : statuses[row.day] === 'fail'
-                          ? 'bg-red-500 text-white'
+                          : statuses[row.day] === 'fail' 
+                          ? 'bg-red-500 text-white' 
                           : 'bg-slate-100 text-slate-300 hover:bg-slate-200 hover:text-slate-400'
                         }`}
                       >
                         <AnimatePresence mode="wait">
-                          {statuses[row.day] === 'success' && (
+                          {statuses[row.day] === 'success' ? (
                             <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} key="check">
                               <Check className="w-3 h-3" />
                             </motion.div>
-                          )}
-                          {statuses[row.day] === 'fail' && (
+                          ) : statuses[row.day] === 'fail' ? (
                             <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} key="cross">
                               <X className="w-3 h-3" />
                             </motion.div>
-                          )}
-                          {statuses[row.day] === 'pending' && (
+                          ) : (
                              <div key="dot" className="w-1 h-1 rounded-full bg-current" />
                           )}
                         </AnimatePresence>
@@ -308,12 +354,12 @@ export default function App() {
            <div className="bg-white/5 border border-white/10 px-4 py-2 rounded-xl text-xs font-mono">
               <span className="text-slate-400 mr-2">EFFICIENCY:</span>
               <span className="text-emerald-400">
-                {((Object.values(statuses).filter(s => s === 'success').length / (Object.values(statuses).length || 1)) * 100).toFixed(0)}%
+                {((Object.values(statuses).filter(s => s === 'success').length / (totalDays || 1)) * 100).toFixed(0)}%
               </span>
            </div>
            <div className="bg-blue-500/20 border border-blue-400/20 text-blue-300 px-4 py-2 rounded-xl text-xs font-mono">
               <span className="opacity-60 mr-2">EST. GROWTH:</span>
-              <span>17.4x</span>
+              <span>{(tableData[totalDays - 1]?.endBalance / (initialAmount || 1)).toFixed(1)}x</span>
            </div>
         </div>
       </footer>
